@@ -21,12 +21,22 @@ Look up documentation in Godot using fuzz search. Supports `stable`, `latest`, `
 
 ## Configure the MCP server
 
-To use the hosted HTTP server:
+### Claude Code
+
+Run this command to add the MCP server:
+
+```sh
+claude mcp add --transport http godot-docs https://godot-docs-mcp.j2d.workers.dev/mcp
+```
+
+### Claude Desktop, Cursor, and other clients (native HTTP support)
+
+Add this to your MCP config file:
 
 ```json
 {
   "mcpServers": {
-    "godot": {
+    "godot-docs": {
       "type": "http",
       "url": "https://godot-docs-mcp.j2d.workers.dev/mcp"
     }
@@ -34,12 +44,14 @@ To use the hosted HTTP server:
 }
 ```
 
-Or, to connect to the MCP server using a `stdio` server:
+### Clients without native HTTP MCP support
+
+Use `mcp-remote` as a bridge (requires Node.js):
 
 ```json
 {
   "mcpServers": {
-    "godot": {
+    "godot-docs": {
       "command": "npx",
       "args": [
         "mcp-remote",
@@ -75,7 +87,7 @@ Then, set up your tool:
 ```json
 {
   "mcpServers": {
-    "godot": {
+    "godot-docs": {
       "command": "npx",
       "args": [
         "mcp-remote",
@@ -137,7 +149,7 @@ After deployment, update your MCP config with your worker URL:
 ```json
 {
   "mcpServers": {
-    "godot": {
+    "godot-docs": {
       "type": "http",
       "url": "https://godot-docs-mcp.YOUR-SUBDOMAIN.workers.dev/mcp"
     }

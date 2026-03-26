@@ -47,6 +47,10 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/mcp') {
+      if (request.method === 'GET' && !request.headers.get('accept')?.includes('text/event-stream')) {
+        return new Response('OK', { status: 200 });
+      }
+
       const ip = request.headers.get('cf-connecting-ip') || 'unknown';
       const { success } = await env.MCP_RATE_LIMITER.limit({ key: ip });
 
