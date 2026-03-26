@@ -247,33 +247,6 @@ function parseHtmlPage(html: string, url: string): ParsedPage {
       // Split into subsections
       const subsections = splitOnItemSeparators(child);
 
-      // Only use subsections if we actually got multiple groups
-      if (subsections.length <= 1) {
-        // Treat as a single section
-        const sectionMarkdown = elementToMarkdown(child, doc);
-        root.push({
-          address: sectionAddress,
-          heading: sectionHeading,
-          level: 2,
-          content: sectionMarkdown,
-          lineCount: sectionMarkdown.split('\n').length,
-          charCount: sectionMarkdown.length,
-          children: [],
-        });
-
-        if (sectionId === 'description' && !description) {
-          const paragraphs = child.querySelectorAll('p');
-          for (let p = 0; p < paragraphs.length; p++) {
-            const text = paragraphs[p].textContent?.trim();
-            if (text && text.length > 0) {
-              description = text.length > 300 ? text.slice(0, 297) + '...' : text;
-              break;
-            }
-          }
-        }
-        continue;
-      }
-
       // The parent section's own content is the H2 heading only (rendered as markdown)
       const h2Markdown = h2 ? elementToMarkdown(h2, doc) : sectionHeading;
 
