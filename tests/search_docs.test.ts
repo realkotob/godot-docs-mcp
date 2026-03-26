@@ -161,10 +161,46 @@ describe('getting docs for page by term', () => {
     });
   });
 
-  it('responds with results', async () => {
+  it('returns TOC when no section is provided', async () => {
     const results = await getDocsPageForTerm('node3d');
-    const docString = `URL: https://docs.godotengine.org/en/stable/classes/class_node3d.html
-Content: Node3D[](#node3d "Link to this heading")`;
-    expect(results.content[0].text).toContain(docString);
+    const text = results.content[0].text;
+    expect(text).toContain('URL: https://docs.godotengine.org/en/stable/classes/class_node3d.html');
+    expect(text).toContain('Total size:');
+    expect(text).toContain('Description:');
+    expect(text).toContain('Sections:');
+    expect(text).toContain('To fetch a section');
+  });
+
+  it('returns section content when section "0" is provided', async () => {
+    const results = await getDocsPageForTerm('node3d', 'stable', '0');
+    const text = results.content[0].text;
+    expect(text).toContain('URL: https://docs.godotengine.org/en/stable/classes/class_node3d.html');
+    expect(text).toContain('Section 0:');
+    expect(text).toContain('Node3D');
+  });
+
+  it('returns section content for H2 section', async () => {
+    const results = await getDocsPageForTerm('node3d', 'stable', '1');
+    const text = results.content[0].text;
+    expect(text).toContain('URL:');
+    expect(text).toContain('Section 1:');
+  });
+
+  it('returns error for out-of-range section', async () => {
+    const results = await getDocsPageForTerm('node3d', 'stable', '999');
+    expect(results.isError).toBe(true);
+    expect(results.content[0].text).toContain("Section '999' does not exist");
+  });
+
+  it('returns error for invalid section format', async () => {
+    const results = await getDocsPageForTerm('node3d', 'stable', 'abc');
+    expect(results.isError).toBe(true);
+    expect(results.content[0].text).toContain("Invalid section format 'abc'");
+  });
+
+  it('returns error when page is provided without section', async () => {
+    const results = await getDocsPageForTerm('node3d', 'stable', undefined, 2);
+    expect(results.isError).toBe(true);
+    expect(results.content[0].text).toContain("'page' parameter requires a 'section' parameter");
   });
 });
