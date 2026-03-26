@@ -1,7 +1,7 @@
 import { createDocument } from '@mixmark-io/domino';
 import MiniSearch, { type Options as MiniSearchOptions } from 'minisearch';
 import TurndownService from 'turndown';
-import { gfm } from 'turndown-plugin-gfm';
+import { gfm } from '@joplin/turndown-plugin-gfm';
 
 type Version = 'stable' | 'latest' | '4.6' | '4.5' | '4.4' | '4.3';
 
@@ -55,236 +55,307 @@ const turndownService = new TurndownService({
   hr: '---',
   codeBlockStyle: 'fenced',
 });
+turndownService.use(gfm);
 
 function makeFullUrl(version: Version, page: string) {
   return `https://docs.godotengine.org/en/${version}${page}`;
 }
 
-function toMarkdown(html: string) {
-  const doc = createDocument(html);
-  const content = doc.querySelector('div[role="main"]');
-
-  return turndownService.use(gfm).turndown(content);
+/**
+ * Convert an array of DOM elements to markdown by wrapping them in a temp container.
+ * We pass DOM nodes (not strings) to Turndown so it uses domino's DOM instead of
+ * trying to access the browser's `document` (which doesn't exist in Workers).
+ */
+function elementsToMarkdown(elements: Element[], doc: Document): string {
+  if (elements.length === 0) return '';
+  const container = doc.createElement('div');
+  for (const el of elements) {
+    container.appendChild(el.cloneNode(true));
+  }
+  return turndownService.turndown(container as unknown as HTMLElement).trim();
 }
 
-type FlatHeading = {
-  level: number;
-  heading: string;
-  startOffset: number;
-};
-
-function findHeadings(markdown: string): FlatHeading[] {
-  const headings: FlatHeading[] = [];
-  const lines = markdown.split('\n');
-  let offset = 0;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Check for setext H1: next line is ===+
-    if (i + 1 < lines.length && line.trim().length > 0 && /^={3,}$/.test(lines[i + 1].trim())) {
-      headings.push({ level: 1, heading: line.trim(), startOffset: offset });
-    }
-
-    // Check for setext H2: next line is ---+ (but current line must be non-empty text)
-    if (i + 1 < lines.length && line.trim().length > 0 && /^-{3,}$/.test(lines[i + 1].trim())) {
-      // Avoid matching horizontal rules: the preceding line must not be empty
-      // and must not look like a heading underline itself
-      if (!/^[=-]+$/.test(line.trim())) {
-        headings.push({ level: 2, heading: line.trim(), startOffset: offset });
-      }
-    }
-
-    // Check for ATX headings (H3-H6): lines starting with ###+
-    const atxMatch = line.match(/^(#{3,6})\s+(.+)/);
-    if (atxMatch) {
-      headings.push({
-        level: atxMatch[1].length,
-        heading: atxMatch[2].trim(),
-        startOffset: offset,
-      });
-    }
-
-    offset += line.length + 1; // +1 for the newline
-  }
-
-  return headings;
+/**
+ * Convert a single DOM element to markdown.
+ * Must pass the DOM node directly, not outerHTML string.
+ */
+function elementToMarkdown(element: Element, doc: Document): string {
+  // Wrap in a container to avoid losing the element itself
+  const container = doc.createElement('div');
+  container.appendChild(element.cloneNode(true));
+  return turndownService.turndown(container as unknown as HTMLElement).trim();
 }
 
-function buildHeadingTree(markdown: string, headings: FlatHeading[]): HeadingNode[] {
-  if (headings.length === 0) {
-    return [{
-      address: '0',
-      heading: '(Full Page)',
-      level: 1,
-      content: markdown,
-      lineCount: markdown.split('\n').length,
-      charCount: markdown.length,
-      children: [],
-    }];
+/**
+ * Get children of an element as an array (domino NodeList isn't iterable).
+ */
+function childArray(el: Element): Element[] {
+  const result: Element[] = [];
+  for (let i = 0; i < el.children.length; i++) {
+    result.push(el.children[i]);
   }
+  return result;
+}
 
-  // Find the minimum heading level used as "top-level" sections
-  // Typically H2 for Godot docs, but we detect it dynamically
-  const minSectionLevel = Math.min(...headings.filter(h => h.level > 1).map(h => h.level));
-  const topLevel = minSectionLevel || 2;
+/**
+ * Split a section's children on <hr class="classref-item-separator"> elements
+ * to find individual property/method subsections.
+ */
+function splitOnItemSeparators(sectionEl: Element): { heading: string; elements: Element[] }[] {
+  const children = childArray(sectionEl);
+  const groups: { heading: string; elements: Element[] }[] = [];
+  let currentElements: Element[] = [];
+  let isFirstGroup = true;
 
-  const root: HeadingNode[] = [];
-
-  // If there's content before the first heading, add as Introduction
-  const firstHeadingOffset = headings[0].startOffset;
-  // Skip the H1 title heading - find first non-H1 heading
-  const firstSectionIdx = headings.findIndex(h => h.level >= topLevel);
-  const introEnd = firstSectionIdx >= 0 ? headings[firstSectionIdx].startOffset : markdown.length;
-
-  if (introEnd > 0) {
-    const introContent = markdown.slice(0, introEnd).trimEnd();
-    if (introContent.length > 0) {
-      root.push({
-        address: '0',
-        heading: '(Introduction)',
-        level: topLevel,
-        content: introContent,
-        lineCount: introContent.split('\n').length,
-        charCount: introContent.length,
-        children: [],
-      });
-    }
-  }
-
-  // Build sections from non-H1 headings
-  const sectionHeadings = headings.filter(h => h.level >= topLevel);
-
-  for (let i = 0; i < sectionHeadings.length; i++) {
-    const start = sectionHeadings[i].startOffset;
-    const end = i + 1 < sectionHeadings.length ? sectionHeadings[i + 1].startOffset : markdown.length;
-    const content = markdown.slice(start, end).trimEnd();
-
-    sectionHeadings[i] = { ...sectionHeadings[i], startOffset: start };
-    // We'll use this content when building the tree
-  }
-
-  // Now build the tree recursively using a stack-based approach
-  function buildNodes(
-    flatHeadings: { level: number; heading: string; startOffset: number }[],
-    parentAddress: string,
-    startIdx: number,
-    endIdx: number,
-    parentLevel: number,
-  ): HeadingNode[] {
-    const nodes: HeadingNode[] = [];
-    let childIndex = 0;
-    let i = startIdx;
-
-    while (i < endIdx) {
-      const h = flatHeadings[i];
-      if (h.level > parentLevel) {
-        // This shouldn't happen at this level, skip
-        i++;
-        continue;
-      }
-
-      // Find the extent of this heading's content (until next heading at same or higher level)
-      let nextSameOrHigher = i + 1;
-      while (nextSameOrHigher < endIdx && flatHeadings[nextSameOrHigher].level > h.level) {
-        nextSameOrHigher++;
-      }
-
-      const contentStart = h.startOffset;
-      const contentEnd = nextSameOrHigher < endIdx
-        ? flatHeadings[nextSameOrHigher].startOffset
-        : (endIdx < flatHeadings.length ? flatHeadings[endIdx].startOffset : markdown.length);
-
-      const fullContent = markdown.slice(contentStart, contentEnd).trimEnd();
-
-      // Own content = from this heading to the first child heading
-      const firstChildIdx = i + 1;
-      const ownContentEnd = firstChildIdx < nextSameOrHigher
-        ? flatHeadings[firstChildIdx].startOffset
-        : contentEnd;
-      const ownContent = markdown.slice(contentStart, ownContentEnd).trimEnd();
-
-      const address = parentAddress ? `${parentAddress}.${childIndex}` : `${root.length}`;
-
-      const node: HeadingNode = {
-        address,
-        heading: h.heading,
-        level: h.level,
-        content: ownContent,
-        lineCount: fullContent.split('\n').length,
-        charCount: fullContent.length,
-        children: [],
-      };
-
-      // Recursively build children
-      if (firstChildIdx < nextSameOrHigher) {
-        node.children = buildNodes(flatHeadings, address, firstChildIdx, nextSameOrHigher, h.level + 1);
-      }
-
-      nodes.push(node);
-      childIndex++;
-      i = nextSameOrHigher;
-    }
-
-    return nodes;
-  }
-
-  // Group top-level (topLevel) headings and build tree
-  let i = 0;
-  while (i < sectionHeadings.length) {
-    const h = sectionHeadings[i];
-    if (h.level !== topLevel) {
-      i++;
+  for (const child of children) {
+    // Skip the H2 heading (it belongs to the parent section, not subsections)
+    if (isFirstGroup && child.tagName === 'H2') {
       continue;
     }
 
-    // Find extent until next top-level heading
-    let nextTopLevel = i + 1;
-    while (nextTopLevel < sectionHeadings.length && sectionHeadings[nextTopLevel].level > topLevel) {
-      nextTopLevel++;
+    // Split on item separators
+    if (child.tagName === 'HR' && child.className.includes('classref-item-separator')) {
+      if (currentElements.length > 0) {
+        const heading = extractItemName(currentElements);
+        groups.push({ heading, elements: currentElements });
+        currentElements = [];
+        isFirstGroup = false;
+      }
+      continue;
     }
 
-    const contentStart = h.startOffset;
-    const contentEnd = nextTopLevel < sectionHeadings.length
-      ? sectionHeadings[nextTopLevel].startOffset
-      : markdown.length;
-    const fullContent = markdown.slice(contentStart, contentEnd).trimEnd();
-
-    // Own content (from heading to first child)
-    const firstChildIdx = i + 1;
-    const ownContentEnd = firstChildIdx < nextTopLevel
-      ? sectionHeadings[firstChildIdx].startOffset
-      : contentEnd;
-    const ownContent = markdown.slice(contentStart, ownContentEnd).trimEnd();
-
-    const address = `${root.length}`;
-
-    const node: HeadingNode = {
-      address,
-      heading: h.heading,
-      level: h.level,
-      content: ownContent,
-      lineCount: fullContent.split('\n').length,
-      charCount: fullContent.length,
-      children: [],
-    };
-
-    // Build children recursively
-    if (firstChildIdx < nextTopLevel) {
-      node.children = buildNodes(sectionHeadings, address, firstChildIdx, nextTopLevel, topLevel + 1);
-    }
-
-    root.push(node);
-    i = nextTopLevel;
+    currentElements.push(child);
   }
 
-  return root;
+  // Don't forget the last group
+  if (currentElements.length > 0) {
+    const heading = extractItemName(currentElements);
+    groups.push({ heading, elements: currentElements });
+  }
+
+  return groups;
 }
 
-function parseMarkdownIntoHeadingTree(markdown: string): HeadingNode[] {
-  const headings = findHeadings(markdown);
-  return buildHeadingTree(markdown, headings);
+/**
+ * Extract the property/method name from the first classref-property/classref-method element.
+ */
+function extractItemName(elements: Element[]): string {
+  for (const el of elements) {
+    if (el.className.includes('classref-property') ||
+        el.className.includes('classref-method') ||
+        el.className.includes('classref-signal')) {
+      const strong = el.querySelector('strong');
+      if (strong) return strong.textContent?.trim() || '(unnamed)';
+      // Fallback: use text content, truncated
+      const text = el.textContent?.trim() || '(unnamed)';
+      return text.slice(0, 50);
+    }
+  }
+  return '(unnamed)';
 }
+
+/**
+ * Parse HTML into a structured ParsedPage with heading tree.
+ * Sections are identified from the DOM structure, not from markdown headings.
+ * Each section/subsection is converted to markdown individually (many small
+ * Turndown calls are faster than one large call in the Workers runtime).
+ */
+function parseHtmlPage(html: string, url: string): ParsedPage {
+  const doc = createDocument(html);
+  const main = doc.querySelector('div[role="main"]');
+
+  if (!main) {
+    const markdown = turndownService.turndown(html).trim();
+    return {
+      url,
+      title: '',
+      description: '',
+      root: [{
+        address: '0',
+        heading: '(Full Page)',
+        level: 1,
+        content: markdown,
+        lineCount: markdown.split('\n').length,
+        charCount: markdown.length,
+        children: [],
+      }],
+      totalLines: markdown.split('\n').length,
+      totalChars: markdown.length,
+    };
+  }
+
+  // Find the main content section (e.g., <section id="node3d">)
+  const mainSection = main.querySelector('section[id]');
+  const container = mainSection || main;
+  const children = childArray(container);
+
+  const root: HeadingNode[] = [];
+  let title = '';
+  let description = '';
+
+  // Collect intro elements (everything before the first <section> child)
+  const introElements: Element[] = [];
+  let sectionStartIdx = 0;
+
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    if (child.tagName === 'SECTION') {
+      sectionStartIdx = i;
+      break;
+    }
+    if (child.tagName === 'H1') {
+      title = child.textContent?.trim() || '';
+    }
+    introElements.push(child);
+    sectionStartIdx = i + 1;
+  }
+
+  // Build Introduction section (section 0)
+  if (introElements.length > 0) {
+    const introMarkdown = elementsToMarkdown(introElements, doc);
+    root.push({
+      address: '0',
+      heading: '(Introduction)',
+      level: 2,
+      content: introMarkdown,
+      lineCount: introMarkdown.split('\n').length,
+      charCount: introMarkdown.length,
+      children: [],
+    });
+  }
+
+  // Process remaining children: <section> elements and <hr> separators
+  for (let i = sectionStartIdx; i < children.length; i++) {
+    const child = children[i];
+
+    // Skip section-level separators between top-level sections
+    if (child.tagName === 'HR') continue;
+
+    // Skip non-section elements
+    if (child.tagName !== 'SECTION') continue;
+
+    const sectionId = child.id || '';
+    const h2 = child.querySelector('h2');
+    const sectionHeading = h2?.textContent?.trim() || sectionId || '(Untitled)';
+    const sectionAddress = `${root.length}`;
+
+    // Only split into subsections if this section contains named items (properties/methods/signals)
+    const hasNamedItems = child.querySelector('.classref-property, .classref-method, .classref-signal') !== null
+      && child.querySelector('hr.classref-item-separator') !== null;
+
+    if (hasNamedItems) {
+      // Split into subsections
+      const subsections = splitOnItemSeparators(child);
+
+      // Only use subsections if we actually got multiple groups
+      if (subsections.length <= 1) {
+        // Treat as a single section
+        const sectionMarkdown = elementToMarkdown(child, doc);
+        root.push({
+          address: sectionAddress,
+          heading: sectionHeading,
+          level: 2,
+          content: sectionMarkdown,
+          lineCount: sectionMarkdown.split('\n').length,
+          charCount: sectionMarkdown.length,
+          children: [],
+        });
+
+        if (sectionId === 'description' && !description) {
+          const paragraphs = child.querySelectorAll('p');
+          for (let p = 0; p < paragraphs.length; p++) {
+            const text = paragraphs[p].textContent?.trim();
+            if (text && text.length > 0) {
+              description = text.length > 300 ? text.slice(0, 297) + '...' : text;
+              break;
+            }
+          }
+        }
+        continue;
+      }
+
+      // The parent section's own content is the H2 heading only (rendered as markdown)
+      const h2Markdown = h2 ? elementToMarkdown(h2, doc) : sectionHeading;
+
+      // Build children
+      const childNodes: HeadingNode[] = [];
+      let totalContent = h2Markdown;
+
+      for (let j = 0; j < subsections.length; j++) {
+        const sub = subsections[j];
+        const subMarkdown = elementsToMarkdown(sub.elements, doc);
+        const childAddress = `${sectionAddress}.${j}`;
+
+        childNodes.push({
+          address: childAddress,
+          heading: sub.heading,
+          level: 3,
+          content: subMarkdown,
+          lineCount: subMarkdown.split('\n').length,
+          charCount: subMarkdown.length,
+          children: [],
+        });
+
+        totalContent += '\n\n' + subMarkdown;
+      }
+
+      root.push({
+        address: sectionAddress,
+        heading: sectionHeading,
+        level: 2,
+        content: h2Markdown,
+        lineCount: totalContent.split('\n').length,
+        charCount: totalContent.length,
+        children: childNodes,
+      });
+    } else {
+      // No subsections - convert entire section to markdown
+      const sectionMarkdown = elementToMarkdown(child, doc);
+
+      root.push({
+        address: sectionAddress,
+        heading: sectionHeading,
+        level: 2,
+        content: sectionMarkdown,
+        lineCount: sectionMarkdown.split('\n').length,
+        charCount: sectionMarkdown.length,
+        children: [],
+      });
+    }
+
+    // Extract description from the "description" section
+    if (sectionId === 'description' && !description) {
+      const paragraphs = child.querySelectorAll('p');
+      for (let p = 0; p < paragraphs.length; p++) {
+        const text = paragraphs[p].textContent?.trim();
+        if (text && text.length > 0) {
+          description = text.length > 300 ? text.slice(0, 297) + '...' : text;
+          break;
+        }
+      }
+    }
+  }
+
+  // Calculate totals from all sections
+  let totalChars = 0;
+  let totalLines = 0;
+  for (const node of root) {
+    const fullContent = getFullContent(node);
+    totalChars += fullContent.length;
+    totalLines += fullContent.split('\n').length;
+  }
+
+  return {
+    url,
+    title,
+    description,
+    root,
+    totalLines,
+    totalChars,
+  };
+}
+
+// --- Section navigation helpers (unchanged from previous implementation) ---
 
 function resolveSection(root: HeadingNode[], address: string): HeadingNode | null {
   const parts = address.split('.').map(Number);
@@ -326,64 +397,6 @@ function formatToc(nodes: HeadingNode[], indent: number = 0): string {
   return lines.join('\n');
 }
 
-function extractDescription(root: HeadingNode[]): string {
-  if (root.length === 0) return '';
-
-  const intro = root[0];
-  const lines = intro.content.split('\n');
-
-  // Skip H1 heading (setext: title line + === line) or other heading lines
-  let startLine = 0;
-  // Skip setext H1
-  if (lines.length > 1 && /^={3,}$/.test(lines[1]?.trim())) {
-    startLine = 2;
-  }
-
-  // Find first non-empty paragraph
-  let desc = '';
-  for (let i = startLine; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (line.length === 0) {
-      if (desc.length > 0) break; // end of paragraph
-      continue;
-    }
-    // Skip anchor links like [](#...)
-    if (/^\[.*\]\(#.*\)$/.test(line)) continue;
-    desc += (desc ? ' ' : '') + line;
-  }
-
-  if (desc.length > 300) {
-    desc = desc.slice(0, 297) + '...';
-  }
-
-  return desc;
-}
-
-function buildParsedPage(url: string, markdown: string): ParsedPage {
-  const root = parseMarkdownIntoHeadingTree(markdown);
-  const description = extractDescription(root);
-  const title = root.length > 0 && root[0].heading === '(Introduction)'
-    ? extractTitleFromIntro(root[0].content)
-    : root.length > 0 ? root[0].heading : '';
-
-  return {
-    url,
-    title,
-    description,
-    root,
-    totalLines: markdown.split('\n').length,
-    totalChars: markdown.length,
-  };
-}
-
-function extractTitleFromIntro(content: string): string {
-  const lines = content.split('\n');
-  if (lines.length > 0 && lines[0].trim().length > 0) {
-    return lines[0].trim();
-  }
-  return '';
-}
-
 function paginateContent(content: string, page: number): { text: string; totalPages: number } {
   const totalPages = Math.ceil(content.length / PAGE_SIZE);
   if (totalPages <= 1) {
@@ -410,6 +423,8 @@ function paginateContent(content: string, page: number): { text: string; totalPa
 
   return { text: content.slice(start, end), totalPages };
 }
+
+// --- Search infrastructure (unchanged) ---
 
 /** Tracks versions whose index failed to load */
 const unavailableVersions = new Set<Version>();
@@ -451,6 +466,8 @@ async function search(searchTerm: string, version: Version = 'stable') {
 
   return output.map(({ url }) => makeFullUrl(version, url));
 }
+
+// --- Exported tool handlers ---
 
 export const searchDocs = async (
   searchTerm: string,
@@ -554,14 +571,11 @@ export const getDocsPageForTerm = async (
       };
     }
 
-    const contentType = res.headers.get('content-type') || '';
-    const isHTML = contentType.includes('html');
     const body = await res.text();
-    const markdown = !isHTML ? body : toMarkdown(body);
 
-    console.info(`Created markdown for ${url}`);
+    console.info(`Parsing page for ${url}`);
 
-    parsedPage = buildParsedPage(url, markdown);
+    parsedPage = parseHtmlPage(body, url);
     fetchedPages.set(url, parsedPage);
   } else {
     console.info(`Reused existing parsed page for ${url}`);

@@ -203,4 +203,35 @@ describe('getting docs for page by term', () => {
     expect(results.isError).toBe(true);
     expect(results.content[0].text).toContain("'page' parameter requires a 'section' parameter");
   });
+
+  it('returns nested subsection content via dot notation', async () => {
+    const results = await getDocsPageForTerm('node3d', 'stable', '8.0');
+    const text = results.content[0].text;
+    expect(text).toContain('Section 8.0: basis');
+    expect(text).toContain('set\\_basis');
+    expect(text).not.toContain('global_basis'); // should only be the basis property
+  });
+
+  it('TOC includes nested subsections for Property Descriptions', async () => {
+    const results = await getDocsPageForTerm('node3d');
+    const text = results.content[0].text;
+    expect(text).toContain('8. Property Descriptions');
+    expect(text).toContain('8.0. basis');
+    expect(text).toContain('8.1. global_basis');
+  });
+
+  it('TOC includes nested subsections for Method Descriptions', async () => {
+    const results = await getDocsPageForTerm('node3d');
+    const text = results.content[0].text;
+    expect(text).toContain('9. Method Descriptions');
+    expect(text).toContain('9.0. add_gizmo');
+  });
+
+  it('returns clean markdown for Methods table (no raw HTML)', async () => {
+    const results = await getDocsPageForTerm('node3d', 'stable', '4');
+    const text = results.content[0].text;
+    expect(text).toContain('| --- | --- |'); // GFM table separator
+    expect(text).not.toContain('<table'); // no raw HTML
+    expect(text).not.toContain('<tr'); // no raw HTML
+  });
 });
