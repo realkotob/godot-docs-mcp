@@ -6,7 +6,7 @@
     "node": "^22.12.0"
   },
   "scripts": {
-    "deploy": "wrangler deploy",
+    "deploy": "tsx scripts/deploy.ts",
     "dev": "wrangler dev",
     "dev:inspect": "NODE_OPTIONS='--inspect' wrangler dev",
     "format": "biome format --write",
@@ -32,6 +32,7 @@
     "@types/turndown": "^5.0.6",
     "node-addon-api": "^8.5.0",
     "node-gyp": "^12.2.0",
+    "tsx": "^4.21.0",
     "typescript": "5.9.3",
     "vitest": "^3.2.0",
     "wrangler": "^4.67.0"

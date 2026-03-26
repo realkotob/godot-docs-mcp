@@ -175,5 +175,8 @@ dist
 !.dev.vars.example
 !.env.example
 
+# generated search indexes
+src/indexes/
+
 # agent configs
 .claude

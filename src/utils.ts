@@ -46,20 +46,34 @@ function toMarkdown(html: string) {
   return turndownService.use(gfm).turndown(content);
 }
 
+/** Tracks versions whose index failed to load */
+const unavailableVersions = new Set<Version>();
+
 async function search(searchTerm: string, version: Version = 'stable') {
+  if (unavailableVersions.has(version)) {
+    throw new Error(`Documentation index for version "${version}" is not available`);
+  }
+
   // keep the DB from being recreated/reindexed over and over
   if (!miniSearches.has(version)) {
     console.info(`Creating index for ${version}`);
-    const miniSearch = new MiniSearch<SearchIndexItem>(miniSearchOptions);
 
-    const searchIndex: SearchIndexItem[] = await import(
-      `./indexes/${version}/searchindex.js.json`
-    ).then((mod) => mod.default);
+    try {
+      const miniSearch = new MiniSearch<SearchIndexItem>(miniSearchOptions);
 
-    miniSearch.removeAll();
-    miniSearch.addAll(searchIndex);
+      const searchIndex: SearchIndexItem[] = await import(
+        `./indexes/${version}/searchindex.js.json`
+      ).then((mod) => mod.default);
 
-    miniSearches.set(version, miniSearch);
+      miniSearch.removeAll();
+      miniSearch.addAll(searchIndex);
+
+      miniSearches.set(version, miniSearch);
+    } catch (err) {
+      console.error(`Failed to load index for version "${version}":`, err);
+      unavailableVersions.add(version);
+      throw new Error(`Documentation index for version "${version}" is not available`);
+    }
   }
 
   const miniSearch = miniSearches.get(version);
@@ -77,13 +91,26 @@ export const searchDocs = async (
   searchTerm: string,
   version: Version = 'stable',
 ) => {
-  const results = await search(searchTerm, version);
+  let results: string[];
+  try {
+    results = await search(searchTerm, version);
+  } catch (err) {
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: err instanceof Error ? err.message : `Failed to search for "${searchTerm}" in version "${version}"`,
+        },
+      ],
+      isError: true,
+    };
+  }
 
   if (results.length < 1) {
     return {
       content: [
         {
-          type: 'text',
+          type: 'text' as const,
           text: `Failed to find any documentation for "${searchTerm}"`,
         },
       ],
@@ -94,7 +121,7 @@ export const searchDocs = async (
   return {
     content: [
       {
-        type: 'text',
+        type: 'text' as const,
         text: results.join('\n'),
       },
     ],
@@ -105,13 +132,26 @@ export const getDocsPageForTerm = async (
   searchTerm: string,
   version: Version = 'stable',
 ) => {
-  const results = await search(searchTerm, version);
+  let results: string[];
+  try {
+    results = await search(searchTerm, version);
+  } catch (err) {
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: err instanceof Error ? err.message : `Failed to search for "${searchTerm}" in version "${version}"`,
+        },
+      ],
+      isError: true,
+    };
+  }
 
   if (results.length < 1) {
     return {
       content: [
         {
-          type: 'text',
+          type: 'text' as const,
           text: `Failed to find any documentation for "${searchTerm}"`,
         },
       ],
@@ -127,7 +167,7 @@ export const getDocsPageForTerm = async (
     return {
       content: [
         {
-          type: 'text',
+          type: 'text' as const,
           text: fetchedPages.get(url),
         },
       ],
@@ -152,7 +192,7 @@ export const getDocsPageForTerm = async (
     return {
       content: [
         {
-          type: 'text',
+          type: 'text' as const,
           text: output,
         },
       ],
@@ -162,7 +202,7 @@ export const getDocsPageForTerm = async (
   return {
     content: [
       {
-        type: 'text',
+        type: 'text' as const,
         text: `Failed to fetch ${url}: ${res.status} ${res.statusText}\n${res.body}`,
       },
     ],

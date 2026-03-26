@@ -153,7 +153,7 @@ npm install -g wrangler
 wrangler login
 ```
 
-3. Change the `ratelimits` settings in the `wrangler.jsonc`.
+3. Change the `ratelimits` settings in the `wrangler.jsonc` (recommended value 120 for personal use).
 4. Clone and deploy:
 
 ```sh
