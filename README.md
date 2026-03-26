@@ -75,6 +75,11 @@ This project takes advantage of that in the following ways:
 
 ## Local development
 
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) v22.12+ (recommended to install via [nvm](https://github.com/nvm-sh/nvm))
+- [Wrangler](https://developers.cloudflare.com/workers/wrangler/) (installed via `npm install`)
+
 ### MCP server
 
 ```sh
@@ -111,35 +116,19 @@ You can also use https://www.mcpplayground.io/ to look at the tools in the live 
 
 ### Generating the docs
 
-**Bash:**
+Download and generate search indexes for all supported versions:
 
-```bash
-# create the folders
-for v in stable latest 4.6 4.5 4.4 4.3; do mkdir -p "src/indexes/$v"; done
-
-# download the files
-for v in stable latest 4.6 4.5 4.4 4.3; do
-  curl -o "src/indexes/$v/searchindex.js" "https://docs.godotengine.org/en/$v/searchindex.js"
-done
-
-# convert the .js to a .json
-for f in src/indexes/*/searchindex.js; do
-  sed 's/^Search\.setIndex(//; $ s/)$//' "$f" \
-    | jq '.docnames | to_entries | map({id: .key, name: .value, category: (.value | split("/") | first), url: "/\(.value).html"})' \
-    > "$f.json"
-done
+```sh
+npm run generate-indexes
 ```
 
-**Fish:**
+Or for specific versions only:
 
-```fish
-# create the folders
-echo "stable,latest,4.6,4.5,4.4,4.3" | string split "," | xargs -I {} mkdir -p "src/indexes/{}"
-# download the files
-echo "stable,latest,4.6,4.5,4.4,4.3" | string split "," | xargs -I {} curl -o "src/indexes/{}/searchindex.js" "https://docs.godotengine.org/en/{}/searchindex.js"
-# convert the .js to a .json
-lsd src/indexes/*/searchindex.js | xargs -n1 fish -c 'cat "$argv" | sd "Search.setIndex\(" "" | sed \'$ s/.$//\' | jq \'.docnames | to_entries | map({id: .key, name: .value, category: .value | split("/") | first, url: "/\\(.value).html"})\' > "$argv.json"'
+```sh
+npm run generate-indexes -- stable 4.6
 ```
+
+Run `npm run generate-indexes -- --help` for more details.
 
 ## Deploy to Cloudflare
 

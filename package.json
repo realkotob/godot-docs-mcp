@@ -6,9 +6,10 @@
     "node": "^22.12.0"
   },
   "scripts": {
-    "deploy": "tsx scripts/deploy.ts",
+    "generate-indexes": "tsx scripts/generate-indexes.ts",
     "dev": "wrangler dev",
     "dev:inspect": "NODE_OPTIONS='--inspect' wrangler dev",
+    "deploy": "tsx scripts/deploy.ts",
     "format": "biome format --write",
     "lint:fix": "biome lint --fix",
     "start": "wrangler dev",

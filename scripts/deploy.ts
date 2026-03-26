@@ -22,15 +22,13 @@ for (const version of SUPPORTED_VERSIONS) {
 
 if (found.length === 0) {
   console.error('ERROR: No documentation index files found for any supported version.');
-  console.error('Expected at least one of:');
-  for (const version of SUPPORTED_VERSIONS) {
-    console.error(`  - src/indexes/${version}/searchindex.js.json`);
-  }
+  console.error('Run "npm run generate-indexes" to download and generate them.');
   process.exit(1);
 }
 
 if (missing.length > 0) {
   console.warn(`WARNING: Missing index files for versions: ${missing.join(', ')}`);
+  console.warn(`Run "npm run generate-indexes -- ${missing.join(' ')}" to generate them.`);
   console.warn(`Continuing with available versions: ${found.join(', ')}\n`);
 }
 
