@@ -111,7 +111,28 @@ You can also use https://www.mcpplayground.io/ to look at the tools in the live 
 
 ### Generating the docs
 
-```sh
+**Bash:**
+
+```bash
+# create the folders
+for v in stable latest 4.6 4.5 4.4 4.3; do mkdir -p "src/indexes/$v"; done
+
+# download the files
+for v in stable latest 4.6 4.5 4.4 4.3; do
+  curl -o "src/indexes/$v/searchindex.js" "https://docs.godotengine.org/en/$v/searchindex.js"
+done
+
+# convert the .js to a .json
+for f in src/indexes/*/searchindex.js; do
+  sed 's/^Search\.setIndex(//; $ s/)$//' "$f" \
+    | jq '.docnames | to_entries | map({id: .key, name: .value, category: (.value | split("/") | first), url: "/\(.value).html"})' \
+    > "$f.json"
+done
+```
+
+**Fish:**
+
+```fish
 # create the folders
 echo "stable,latest,4.6,4.5,4.4,4.3" | string split "," | xargs -I {} mkdir -p "src/indexes/{}"
 # download the files
