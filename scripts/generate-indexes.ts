@@ -24,6 +24,10 @@ const INDEXES_DIR = resolve(__dirname, '..', 'src', 'indexes');
 
 const SUPPORTED_VERSIONS = ['stable', 'latest', '4.6', '4.5', '4.4', '4.3'] as const;
 
+const supportsColor = process.stdout.isTTY ?? false;
+const green = (s: string) => supportsColor ? `\x1b[32m${s}\x1b[0m` : s;
+const red = (s: string) => supportsColor ? `\x1b[31m${s}\x1b[0m` : s;
+
 type SearchIndexItem = {
   id: number;
   name: string;
@@ -55,7 +59,7 @@ async function generateIndex(version: string): Promise<boolean> {
   const res = await fetch(url);
 
   if (!res.ok) {
-    console.error(`[${version}] Failed to download: ${res.status} ${res.statusText}`);
+    console.error(red(`[${version}] Failed to download: ${res.status} ${res.statusText}`));
     return false;
   }
 
@@ -103,8 +107,8 @@ Examples:
 
   const invalid = versions.filter((v) => !(SUPPORTED_VERSIONS as readonly string[]).includes(v));
   if (invalid.length > 0) {
-    console.error(`Unknown version(s): ${invalid.join(', ')}`);
-    console.error(`Supported versions: ${SUPPORTED_VERSIONS.join(', ')}`);
+    console.error(red(`Unknown version(s): ${invalid.join(', ')}`));
+    console.error(red(`Supported versions: ${SUPPORTED_VERSIONS.join(', ')}`));
     process.exit(1);
   }
 
@@ -123,14 +127,16 @@ Examples:
     }
   });
 
-  console.log(`\nDone. ${succeeded.length}/${versions.length} indexes generated.`);
-
-  if (succeeded.length > 0) {
-    console.log(`  Succeeded: ${succeeded.join(', ')}`);
-  }
   if (failed.length > 0) {
-    console.log(`  Failed: ${failed.join(', ')}`);
+    console.log(red(`\nDone. ${succeeded.length}/${versions.length} indexes generated.`));
+    if (succeeded.length > 0) {
+      console.log(green(`  Succeeded: ${succeeded.join(', ')}`));
+    }
+    console.log(red(`  Failed: ${failed.join(', ')}`));
     process.exit(1);
+  } else {
+    console.log(green(`\nDone. ${succeeded.length}/${versions.length} indexes generated.`));
+    console.log(green(`  Succeeded: ${succeeded.join(', ')}`));
   }
 }
 
