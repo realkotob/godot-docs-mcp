@@ -137,18 +137,39 @@ function splitOnItemSeparators(sectionEl: Element): { heading: string; elements:
 }
 
 /**
- * Extract the property/method name from the first classref-property/classref-method element.
+ * Extract the item name from the first classref-* element in a group.
+ * Handles: classref-property, classref-method, classref-signal,
+ * classref-enumeration, classref-constant
  */
 function extractItemName(elements: Element[]): string {
   for (const el of elements) {
-    if (el.className.includes('classref-property') ||
-        el.className.includes('classref-method') ||
-        el.className.includes('classref-signal')) {
+    const cls = el.className;
+
+    // Properties, methods, signals: name is in <strong>
+    if (cls.includes('classref-property') ||
+        cls.includes('classref-method') ||
+        cls.includes('classref-signal')) {
       const strong = el.querySelector('strong');
       if (strong) return strong.textContent?.trim() || '(unnamed)';
-      // Fallback: use text content, truncated
       const text = el.textContent?.trim() || '(unnamed)';
       return text.slice(0, 50);
+    }
+
+    // Enumerations: "enum ProcessMode:" or "flags ProcessThreadMessages:" → extract name
+    if (cls.includes('classref-enumeration') && !cls.includes('classref-enumeration-constant')) {
+      const text = el.textContent?.trim() || '';
+      // Format: "enum ProcessMode: 🔗" or "flags ProcessThreadMessages: 🔗"
+      const match = text.match(/^(?:enum|flags)\s+(\S+)/);
+      if (match) return match[1].replace(/:$/, '');
+      return text.slice(0, 50) || '(unnamed)';
+    }
+
+    // Constants: "NOTIFICATION_ENTER_TREE = 10 🔗" → extract name
+    if (cls.includes('classref-constant')) {
+      const text = el.textContent?.trim() || '';
+      const match = text.match(/^(\S+)/);
+      if (match) return match[1];
+      return text.slice(0, 50) || '(unnamed)';
     }
   }
   return '(unnamed)';
@@ -240,8 +261,18 @@ function parseHtmlPage(html: string, url: string): ParsedPage {
     const sectionAddress = `${root.length}`;
 
     // Only split into subsections if this section contains named items (properties/methods/signals)
-    const hasNamedItems = child.querySelector('.classref-property, .classref-method, .classref-signal') !== null
-      && child.querySelector('hr.classref-item-separator') !== null;
+    // Check direct children only (not deep descendants) to avoid matching
+    // items from sibling sections that are nested under the same parent
+    const directChildren = childArray(child);
+    const hasNamedItems = directChildren.some(c =>
+      c.className?.includes('classref-property') ||
+      c.className?.includes('classref-method') ||
+      c.className?.includes('classref-signal') ||
+      c.className?.includes('classref-enumeration') ||
+      c.className?.includes('classref-constant')
+    ) && directChildren.some(c =>
+      c.tagName === 'HR' && c.className?.includes('classref-item-separator')
+    );
 
     if (hasNamedItems) {
       // Split into subsections
