@@ -587,18 +587,30 @@ export const getDocsPageForTerm = async (
 
   // Mode 1: TOC (no section param)
   if (section === undefined) {
+    // Include section 0 (Introduction) content inline, exclude it from the TOC listing
+    const introNode = parsedPage.root.find(n => n.address === '0' && n.heading === '(Introduction)');
+    const tocSections = parsedPage.root.filter(n => !(n.address === '0' && n.heading === '(Introduction)'));
+
     const tocLines = [
       `URL: ${parsedPage.url}`,
       `Total size: ${parsedPage.totalLines} lines, ${parsedPage.totalChars} chars`,
-      '',
-      `Description:`,
-      parsedPage.description,
+    ];
+
+    if (introNode) {
+      tocLines.push('', introNode.content);
+    }
+
+    if (parsedPage.description) {
+      tocLines.push('', `Description:`, parsedPage.description);
+    }
+
+    tocLines.push(
       '',
       'Sections:',
-      formatToc(parsedPage.root),
+      formatToc(tocSections),
       '',
       'To fetch a section, call this tool again with the same searchTerm and the section address (e.g., section="1" or section="5.1").',
-    ];
+    );
 
     return {
       content: [{ type: 'text' as const, text: tocLines.join('\n') }],

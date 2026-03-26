@@ -166,9 +166,10 @@ describe('getting docs for page by term', () => {
     const text = results.content[0].text;
     expect(text).toContain('URL: https://docs.godotengine.org/en/stable/classes/class_node3d.html');
     expect(text).toContain('Total size:');
-    expect(text).toContain('Description:');
+    expect(text).toContain('Node3D'); // intro content inline
     expect(text).toContain('Sections:');
     expect(text).toContain('To fetch a section');
+    expect(text).not.toContain('0. (Introduction)'); // intro excluded from TOC listing
   });
 
   it('returns section content when section "0" is provided', async () => {
@@ -233,5 +234,42 @@ describe('getting docs for page by term', () => {
     expect(text).toContain('| --- | --- |'); // GFM table separator
     expect(text).not.toContain('<table'); // no raw HTML
     expect(text).not.toContain('<tr'); // no raw HTML
+  });
+});
+
+describe('getting docs for tutorial pages', () => {
+  it('returns TOC for vectors_advanced', async () => {
+    const results = await getDocsPageForTerm('vectors_advanced');
+    const text = results.content[0].text;
+    expect(text).toContain('URL: https://docs.godotengine.org/en/stable/tutorials/math/vectors_advanced.html');
+    expect(text).toContain('Advanced vector math');
+    expect(text).toContain('Sections:');
+    expect(text).toContain('1. Planes');
+    expect(text).toContain('2. Collision detection in 3D');
+    expect(text).not.toContain('0. (Introduction)');
+  });
+
+  it('returns section content for vectors_advanced', async () => {
+    const results = await getDocsPageForTerm('vectors_advanced', 'stable', '1');
+    const text = results.content[0].text;
+    expect(text).toContain('Section 1: Planes');
+    expect(text).toContain('plane');
+  });
+
+  it('returns TOC for using_decals', async () => {
+    const results = await getDocsPageForTerm('using_decals');
+    const text = results.content[0].text;
+    expect(text).toContain('URL: https://docs.godotengine.org/en/stable/tutorials/3d/using_decals.html');
+    expect(text).toContain('Using decals');
+    expect(text).toContain('Sections:');
+    expect(text).toContain('1. Use cases');
+    expect(text).toContain('Decal');
+    expect(text).not.toContain('0. (Introduction)');
+  });
+
+  it('returns section content for using_decals', async () => {
+    const results = await getDocsPageForTerm('using_decals', 'stable', '1');
+    const text = results.content[0].text;
+    expect(text).toContain('Section 1: Use cases');
   });
 });
