@@ -609,7 +609,7 @@ export const getDocsPageForTerm = async (
       'Sections:',
       formatToc(tocSections),
       '',
-      'To fetch a section, call this tool again with the same searchTerm and the section address (e.g., section="1" or section="5.1").',
+      'To fetch a section, call this tool again with the same searchTerm and the section address (e.g., section="1" or section="5.1"). You can fetch multiple sections at once by separating addresses with spaces (e.g., section="1 3 5.1").',
     );
 
     return {
@@ -617,56 +617,94 @@ export const getDocsPageForTerm = async (
     };
   }
 
-  // Validate section format
-  if (!/^\d+(\.\d+)*$/.test(section)) {
+  // Split section into multiple addresses (space-separated)
+  const sectionAddresses = section.trim().split(/\s+/);
+
+  // Validate all section formats
+  for (const addr of sectionAddresses) {
+    if (!/^\d+(\.\d+)*$/.test(addr)) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: `Invalid section format '${addr}'. Use dot notation like '3', '5.1', '5.1.2'.`,
+        }],
+        isError: true,
+      };
+    }
+  }
+
+  // Pagination is not supported with multiple sections
+  if (sectionAddresses.length > 1 && page !== undefined) {
     return {
       content: [{
         type: 'text' as const,
-        text: `Invalid section format '${section}'. Use dot notation like '3', '5.1', '5.1.2'.`,
+        text: `The 'page' parameter cannot be used when fetching multiple sections.`,
       }],
       isError: true,
     };
   }
 
-  // Resolve the section
-  const node = resolveSection(parsedPage.root, section);
+  // Resolve all sections
+  const resolvedSections: { node: ReturnType<typeof resolveSection>; address: string }[] = [];
+  for (const addr of sectionAddresses) {
+    const node = resolveSection(parsedPage.root, addr);
 
-  if (!node) {
-    // Build a helpful error message
-    const parts = section.split('.').map(Number);
-    let parentNodes = parsedPage.root;
-    let resolvedAddress = '';
+    if (!node) {
+      // Build a helpful error message
+      const parts = addr.split('.').map(Number);
+      let parentNodes = parsedPage.root;
+      let resolvedAddress = '';
 
-    for (let i = 0; i < parts.length; i++) {
-      if (parts[i] >= parentNodes.length || parts[i] < 0) {
-        const rangeEnd = parentNodes.length - 1;
-        const parentDesc = resolvedAddress
-          ? `Section '${resolvedAddress}' has subsections ${resolvedAddress}.0-${resolvedAddress}.${rangeEnd}`
-          : `This page has sections 0-${rangeEnd}`;
-        return {
-          content: [{
-            type: 'text' as const,
-            text: `Section '${section}' does not exist. ${parentDesc}.`,
-          }],
-          isError: true,
-        };
+      for (let i = 0; i < parts.length; i++) {
+        if (parts[i] >= parentNodes.length || parts[i] < 0) {
+          const rangeEnd = parentNodes.length - 1;
+          const parentDesc = resolvedAddress
+            ? `Section '${resolvedAddress}' has subsections ${resolvedAddress}.0-${resolvedAddress}.${rangeEnd}`
+            : `This page has sections 0-${rangeEnd}`;
+          return {
+            content: [{
+              type: 'text' as const,
+              text: `Section '${addr}' does not exist. ${parentDesc}.`,
+            }],
+            isError: true,
+          };
+        }
+        resolvedAddress = resolvedAddress ? `${resolvedAddress}.${parts[i]}` : `${parts[i]}`;
+        parentNodes = parentNodes[parts[i]].children;
       }
-      resolvedAddress = resolvedAddress ? `${resolvedAddress}.${parts[i]}` : `${parts[i]}`;
-      parentNodes = parentNodes[parts[i]].children;
+
+      return {
+        content: [{ type: 'text' as const, text: `Section '${addr}' does not exist.` }],
+        isError: true,
+      };
+    }
+
+    resolvedSections.push({ node, address: addr });
+  }
+
+  // Mode 2a: Multiple sections - concatenate all content
+  if (resolvedSections.length > 1) {
+    const parts: string[] = [`URL: ${parsedPage.url}`, ''];
+
+    for (const { node } of resolvedSections) {
+      const fullContent = getFullContent(node!);
+      parts.push(`## Section ${node!.address}: ${node!.heading} (${node!.lineCount} lines, ${node!.charCount} chars)`, '', fullContent, '');
     }
 
     return {
-      content: [{ type: 'text' as const, text: `Section '${section}' does not exist.` }],
-      isError: true,
+      content: [{ type: 'text' as const, text: parts.join('\n') }],
     };
   }
 
+  // Single section from here on
+  const { node } = resolvedSections[0];
+
   // Get full content (including children)
-  const fullContent = getFullContent(node);
+  const fullContent = getFullContent(node!);
 
   // Mode 2: Section fits in one page
   if (fullContent.length <= PAGE_SIZE) {
-    const header = `URL: ${parsedPage.url}\nSection ${node.address}: ${node.heading} (${node.lineCount} lines, ${node.charCount} chars)\n\n`;
+    const header = `URL: ${parsedPage.url}\nSection ${node!.address}: ${node!.heading} (${node!.lineCount} lines, ${node!.charCount} chars)\n\n`;
     return {
       content: [{ type: 'text' as const, text: header + fullContent }],
     };
@@ -688,7 +726,7 @@ export const getDocsPageForTerm = async (
 
   const headerLines = [
     `URL: ${parsedPage.url}`,
-    `Section ${node.address}: ${node.heading} (page ${requestedPage} of ${totalPages}, ${fullContent.length} total chars)`,
+    `Section ${node!.address}: ${node!.heading} (page ${requestedPage} of ${totalPages}, ${fullContent.length} total chars)`,
     '',
   ];
 
@@ -696,8 +734,8 @@ export const getDocsPageForTerm = async (
   if (requestedPage < totalPages) {
     footerLines.push('', '---', `To continue reading, call again with section="${section}", page=${requestedPage + 1}.`);
   }
-  if (node.children.length > 0) {
-    footerLines.push(`Or fetch a specific subsection like section="${node.children[0].address}" for just that part.`);
+  if (node!.children.length > 0) {
+    footerLines.push(`Or fetch a specific subsection like section="${node!.children[0].address}" for just that part.`);
   }
 
   return {

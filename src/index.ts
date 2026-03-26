@@ -37,7 +37,7 @@ export class MyMCP extends McpAgent {
         searchTerm: z.string(),
         version: z.enum(supportedVersions).optional().default('stable'),
         section: z.string().optional()
-          .describe('Section address from the TOC using dot notation (e.g., "3", "5.1", "5.1.2"). Omit to get the table of contents.'),
+          .describe('Section address from the TOC using dot notation (e.g., "3", "5.1", "5.1.2"). Omit to get the table of contents. You can fetch multiple sections at once by separating addresses with spaces (e.g., "1 3 5.1").'),
         page: z.number().int().min(1).optional()
           .describe('Page number for large sections (1-indexed). Only needed when section content exceeds ~10000 chars.'),
       },
