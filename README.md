@@ -132,29 +132,50 @@ Run `npm run generate-indexes -- --help` for more details.
 
 ## Deploy to Cloudflare
 
-To deploy your own instance (recommended to avoid rate limits):
+To avoid rate limits, it is recommended to deploy your own instance of the Godot Docs MCP server.
 
-1. Create a free [Cloudflare account](https://dash.cloudflare.com/sign-up)
+### Option 1: Direct Git Deployment (Recommended)
+
+This is the easiest way to keep your server up-to-date. When you push to your repository, Cloudflare will automatically build and deploy your worker.
+
+1. Fork this repository to your GitHub account.
+2. In the [Cloudflare Dashboard](https://dash.cloudflare.com/), go to **Workers & Pages** > **Create application** > **Create Worker**.
+3. Select **Deploy from a Git repository** and connect your forked repo.
+4. In the **Build settings** section, configure the following:
+   - **Build command:** `npm run build`
+   - **Build output directory:** (Leave empty)
+5. After the first deployment, go to **Settings** > **Runtime** and ensure:
+   - **Compatibility Date:** `2025-03-10` or later.
+   - **Compatibility Flags:** Add `nodejs_compat`.
+6. Go to **Settings** > **Bindings** and ensure the following are configured (Wrangler usually handles this, but verify in the dashboard):
+   - **Durable Object:** Name: `MCP_OBJECT`, Class: `MyMCP`.
+   - **Rate Limiter:** Name: `MCP_RATE_LIMITER`, ID: `1001`.
+
+### Option 2: Manual CLI Deployment (Wrangler)
+
+If you prefer deploying from your local machine:
+
+1. Create a free [Cloudflare account](https://dash.cloudflare.com/sign-up).
 2. Install and authenticate Wrangler:
+   ```sh
+   npm install -g wrangler
+   wrangler login
+   ```
+3. Clone the repository and install dependencies:
+   ```sh
+   git clone https://github.com/your-repo/godot-docs-mcp.git
+   cd godot-docs-mcp
+   npm install
+   ```
+4. Deploy the server:
+   ```sh
+   npm run deploy
+   ```
+   *Note: This script will verify that search indexes are generated before deploying.*
 
-```sh
-npm install -g wrangler
-wrangler login
-```
+### 5. Update your server URL
 
-3. Change the `ratelimits` settings in the `wrangler.jsonc` (recommended value 120 for personal use).
-4. Clone and deploy:
-
-```sh
-git clone https://github.com/your-repo/godot-docs-mcp.git
-cd godot-docs-mcp
-npm install
-npm run deploy
-```
-
-5. Update your server URL:
-
-After deployment, update your MCP config with your worker URL:
+After deployment (via either method), update your MCP config with your worker URL:
 
 ```json
 {
@@ -172,7 +193,6 @@ After deployment, update your MCP config with your worker URL:
 The default rate limit is **15 requests per 60 seconds**. To increase or disable it, edit `wrangler.jsonc`:
 
 **Increase the limit:**
-
 ```jsonc
 "ratelimits": [
   {
