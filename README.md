@@ -190,7 +190,22 @@ After deployment (via either method), update your MCP config with your worker UR
 
 ### Adjusting the Rate Limit
 
-The default rate limit is **15 requests per 60 seconds**. To increase or disable it, edit `wrangler.jsonc`:
+The default rate limit is **15 requests per 60 seconds**.
+
+#### Option 1: Using Cloudflare Environment Variables (Recommended)
+
+This method allows you to adjust the rate limit directly in the Cloudflare Dashboard without modifying the code.
+
+1.  In the [Cloudflare Dashboard](https://dash.cloudflare.com/), select your Worker.
+2.  Go to **Settings** > **Variables** > **Environment Variables**.
+3.  Add the following variables as **Text**:
+    *   `RATE_LIMIT`: e.g., `100` (Number of requests)
+    *   `RATE_PERIOD`: e.g., `60` (Time period in seconds)
+4.  The next time your Worker is built/deployed, it will automatically use these values.
+
+#### Option 2: Hardcoding in `wrangler.jsonc`
+
+Alternatively, you can edit the values directly in `wrangler.jsonc`:
 
 **Increase the limit:**
 ```jsonc
