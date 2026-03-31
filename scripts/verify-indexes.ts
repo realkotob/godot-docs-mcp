@@ -1,11 +1,9 @@
 import { existsSync } from 'node:fs';
-import { execSync } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SUPPORTED_VERSIONS } from '../src/utils';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
 const INDEXES_DIR = resolve(__dirname, '..', 'src', 'indexes');
 
 const supportsColor = process.stdout.isTTY ?? false;
@@ -27,23 +25,16 @@ for (const version of SUPPORTED_VERSIONS) {
 
 if (found.length === 0) {
   console.error(red('ERROR: No documentation index files found for any supported version.'));
-  console.error(red('Run "npm run generate-indexes" to download and generate them.'));
+  console.error(red('Build failed because documentation is required for the MCP server.'));
   process.exit(1);
 }
 
 if (missing.length > 0) {
   console.warn(yellow(`WARNING: Missing index files for versions: ${missing.join(', ')}`));
-  console.warn(yellow(`Run "npm run generate-indexes -- ${missing.join(' ')}" to generate them.`));
-  console.warn(yellow(`Continuing with available versions: ${found.join(', ')}\n`));
+  console.warn(yellow('The server will still deploy but these versions will be unavailable.'));
 }
 
-const extraArgs = process.argv.slice(2).join(' ');
-const command = `npx wrangler deploy ${extraArgs}`.trim();
-
-console.log('Deploying with wrangler...');
-execSync(command, { stdio: 'inherit' });
-
-console.log(green('\nDeploy complete. Documentation indexes included for versions:'));
+console.log(green('\nVerification complete. Documentation indexes ready for:'));
 for (const version of found) {
   console.log(green(`  + ${version}`));
 }

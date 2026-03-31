@@ -18,11 +18,10 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SUPPORTED_VERSIONS } from '../src/utils';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const INDEXES_DIR = resolve(__dirname, '..', 'src', 'indexes');
-
-const SUPPORTED_VERSIONS = ['stable', 'latest', '4.6', '4.5', '4.4', '4.3'] as const;
 
 const supportsColor = process.stdout.isTTY ?? false;
 const green = (s: string) => supportsColor ? `\x1b[32m${s}\x1b[0m` : s;
