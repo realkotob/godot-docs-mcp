@@ -3,7 +3,8 @@ import MiniSearch, { type Options as MiniSearchOptions } from 'minisearch';
 import TurndownService from 'turndown';
 import { gfm } from '@joplin/turndown-plugin-gfm';
 
-type Version = 'stable' | 'latest' | '4.6' | '4.5' | '4.4' | '4.3';
+export const SUPPORTED_VERSIONS = ['stable', 'latest', '4.6', '4.5', '4.4', '4.3'] as const;
+export type Version = (typeof SUPPORTED_VERSIONS)[number];
 
 type SearchIndexItem = {
   id: number;
@@ -35,6 +36,16 @@ const PAGE_SIZE = 10_000;
 
 /** Bucket of miniseaches for each version */
 const miniSearches = new Map<Version, MiniSearch<SearchIndexItem>>();
+
+/** Explicit loaders for each version's search index to help the bundler */
+const indexLoaders: Record<Version, () => Promise<{ default: SearchIndexItem[] }>> = {
+  stable: () => import('./indexes/stable/searchindex.js.json'),
+  latest: () => import('./indexes/latest/searchindex.js.json'),
+  '4.6': () => import('./indexes/4.6/searchindex.js.json'),
+  '4.5': () => import('./indexes/4.5/searchindex.js.json'),
+  '4.4': () => import('./indexes/4.4/searchindex.js.json'),
+  '4.3': () => import('./indexes/4.3/searchindex.js.json'),
+};
 
 /** Parsed docs pages - avoids refetching and reparsing */
 const fetchedPages = new Map<string, ParsedPage>();
@@ -443,11 +454,14 @@ async function search(searchTerm: string, version: Version = 'stable') {
     console.info(`Creating index for ${version}`);
 
     try {
+      const loader = indexLoaders[version];
+      if (!loader) {
+        throw new Error(`No index loader defined for version "${version}"`);
+      }
+
       const miniSearch = new MiniSearch<SearchIndexItem>(miniSearchOptions);
 
-      const searchIndex: SearchIndexItem[] = await import(
-        `./indexes/${version}/searchindex.js.json`
-      ).then((mod) => mod.default);
+      const searchIndex: SearchIndexItem[] = await loader().then((mod) => mod.default);
 
       miniSearch.removeAll();
       miniSearch.addAll(searchIndex);

@@ -7,6 +7,7 @@
   },
   "scripts": {
     "generate-indexes": "tsx scripts/generate-indexes.ts",
+    "build": "npm run generate-indexes",
     "dev": "wrangler dev",
     "dev:inspect": "NODE_OPTIONS='--inspect' wrangler dev",
     "deploy": "tsx scripts/deploy.ts",
